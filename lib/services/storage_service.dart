@@ -1,4 +1,5 @@
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../config/constants.dart';
 
 class StorageService {
@@ -6,44 +7,54 @@ class StorageService {
   factory StorageService() => _instance;
   StorageService._internal();
 
-  final FlutterSecureStorage _storage = const FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
+  Future<SharedPreferences> get _prefs async => SharedPreferences.getInstance();
 
   Future<void> saveToken(String token) async {
-    await _storage.write(key: AppConstants.jwtTokenKey, value: token);
+    final prefs = await _prefs;
+    await prefs.setString(AppConstants.jwtTokenKey, token);
   }
 
   Future<String?> getToken() async {
-    return await _storage.read(key: AppConstants.jwtTokenKey);
+    final prefs = await _prefs;
+    return prefs.getString(AppConstants.jwtTokenKey);
   }
 
   Future<void> saveUserRole(String role) async {
-    await _storage.write(key: AppConstants.userRoleKey, value: role);
+    final prefs = await _prefs;
+    await prefs.setString(AppConstants.userRoleKey, role);
   }
 
   Future<String?> getUserRole() async {
-    return await _storage.read(key: AppConstants.userRoleKey);
+    final prefs = await _prefs;
+    return prefs.getString(AppConstants.userRoleKey);
   }
 
   Future<void> saveUserEmail(String email) async {
-    await _storage.write(key: AppConstants.userEmailKey, value: email);
+    final prefs = await _prefs;
+    await prefs.setString(AppConstants.userEmailKey, email);
   }
 
   Future<String?> getUserEmail() async {
-    return await _storage.read(key: AppConstants.userEmailKey);
+    final prefs = await _prefs;
+    return prefs.getString(AppConstants.userEmailKey);
   }
 
   Future<void> saveUserName(String nombre) async {
-    await _storage.write(key: AppConstants.userNameKey, value: nombre);
+    final prefs = await _prefs;
+    await prefs.setString(AppConstants.userNameKey, nombre);
   }
 
   Future<String?> getUserName() async {
-    return await _storage.read(key: AppConstants.userNameKey);
+    final prefs = await _prefs;
+    return prefs.getString(AppConstants.userNameKey);
   }
 
   Future<void> clearAll() async {
-    await _storage.deleteAll();
+    final prefs = await _prefs;
+    await prefs.remove(AppConstants.jwtTokenKey);
+    await prefs.remove(AppConstants.userRoleKey);
+    await prefs.remove(AppConstants.userEmailKey);
+    await prefs.remove(AppConstants.userNameKey);
   }
 
   Future<bool> hasToken() async {

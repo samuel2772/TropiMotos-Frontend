@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../models/user.dart';
+import '../models/user.dart';
 
 class RoleBadge extends StatelessWidget {
   final UserRole? role;

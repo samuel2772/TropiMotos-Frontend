@@ -15,11 +15,15 @@ class TropiMotosApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (_) => AuthProvider(),
-      child: MaterialApp.router(
-        debugShowCheckedModeBanner: false,
-        title: 'TropiMotos',
-        theme: AppTheme.darkTheme,
-        routerConfig: appRouter,
+      child: Consumer<AuthProvider>(
+        builder: (context, authProvider, _) {
+          return MaterialApp.router(
+            debugShowCheckedModeBanner: false,
+            title: 'TropiMotos',
+            theme: AppTheme.darkTheme,
+            routerConfig: createAppRouter(authProvider),
+          );
+        },
       ),
     );
   }

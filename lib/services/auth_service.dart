@@ -1,7 +1,9 @@
 import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+
 import '../config/constants.dart';
 import '../models/user.dart';
-import 'api_client.dart';
 import 'storage_service.dart';
 
 class AuthService {
@@ -9,42 +11,46 @@ class AuthService {
   factory AuthService() => _instance;
   AuthService._internal();
 
-  final ApiClient _apiClient = ApiClient();
   final StorageService _storage = StorageService();
 
   Future<Map<String, dynamic>> login(String email, String password) async {
     try {
-      final response = await _apiClient.post(
-        AppConstants.loginEndpoint,
-        {'email': email, 'password': password},
+      final response = await http.post(
+        Uri.parse('${AppConstants.baseUrl}${AppConstants.loginEndpoint}'),
+        headers: const {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode({
+          'email': email,
+          'password': password,
+        }),
       );
 
-      if (response.statusCode == 200) {
-        final body = jsonDecode(response.body);
+      final body = _decodeBody(response.body);
 
-        if (body is! Map<String, dynamic> || body['success'] != true) {
-          final msg = body is Map && body['message'] != null
-              ? body['message']
-              : 'Error al iniciar sesion';
-          return {'success': false, 'error': msg};
-        }
-
+      if (response.statusCode == 200 && body['success'] == true) {
         final data = body['data'];
         if (data is! Map<String, dynamic>) {
-          return {'success': false, 'error': 'Respuesta del servidor invalida'};
+          return {
+            'success': false,
+            'error': 'La respuesta del backend no tiene el formato esperado.',
+          };
         }
 
-        final token = data['token'];
-        if (token == null || token.toString().isEmpty) {
-          return {'success': false, 'error': 'Token no recibido del servidor'};
+        final token = data['token']?.toString();
+        if (token == null || token.isEmpty) {
+          return {
+            'success': false,
+            'error': 'El backend no devolvió un JWT válido.',
+          };
         }
-
-        await _storage.saveToken(token);
 
         final user = User.fromJson(data);
-        await _storage.saveUserRole(user.role.name.toUpperCase());
+        await _storage.saveToken(token);
         await _storage.saveUserEmail(user.email);
-        if (user.nombre != null) {
+        await _storage.saveUserRole((data['rol'] ?? user.role.name).toString().toUpperCase());
+        if (user.nombre != null && user.nombre!.isNotEmpty) {
           await _storage.saveUserName(user.nombre!);
         }
 
@@ -52,26 +58,25 @@ class AuthService {
           'success': true,
           'token': token,
           'user': user,
+          'message': body['message'],
         };
-      } else if (response.statusCode == 401 || response.statusCode == 403) {
+      }
+
+      if (response.statusCode == 401 || response.statusCode == 403) {
         return {
           'success': false,
-          'error': 'Email o contrasena incorrectos',
+          'error': body['message']?.toString() ?? 'Credenciales incorrectas.',
         };
-      } else {
-        String errorMsg = 'Error del servidor';
-        try {
-          final body = jsonDecode(response.body);
-          if (body is Map<String, dynamic> && body['message'] != null) {
-            errorMsg = body['message'];
-          }
-        } catch (_) {}
-        return {'success': false, 'error': errorMsg};
       }
-    } catch (e) {
+
       return {
         'success': false,
-        'error': 'Error de conexion. Verifica tu internet e intenta de nuevo.',
+        'error': body['message']?.toString() ?? 'No fue posible iniciar sesión.',
+      };
+    } catch (_) {
+      return {
+        'success': false,
+        'error': 'No se pudo conectar con el backend en ${AppConstants.baseUrl}.',
       };
     }
   }
@@ -81,7 +86,7 @@ class AuthService {
   }
 
   Future<bool> isLoggedIn() async {
-    return await _storage.hasToken();
+    return _storage.hasToken();
   }
 
   Future<User?> getCurrentUser() async {
@@ -90,28 +95,39 @@ class AuthService {
     final roleStr = await _storage.getUserRole();
     final nombre = await _storage.getUserName();
 
-    if (token == null || email == null) return null;
-
-    UserRole role;
-    switch (roleStr) {
-      case 'ADMIN':
-        role = UserRole.admin;
-        break;
-      case 'CHOFER':
-        role = UserRole.chofer;
-        break;
-      case 'CLIENTE':
-        role = UserRole.cliente;
-        break;
-      default:
-        role = UserRole.cliente;
+    if (token == null || token.isEmpty || email == null || email.isEmpty) {
+      return null;
     }
 
     return User(
       id: '',
       email: email,
       nombre: nombre,
-      role: role,
+      role: _mapRole(roleStr),
     );
+  }
+
+  Map<String, dynamic> _decodeBody(String rawBody) {
+    try {
+      final decoded = jsonDecode(rawBody);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+      return <String, dynamic>{};
+    } catch (_) {
+      return <String, dynamic>{};
+    }
+  }
+
+  UserRole _mapRole(String? roleStr) {
+    switch ((roleStr ?? '').toUpperCase()) {
+      case 'ADMIN':
+        return UserRole.admin;
+      case 'CHOFER':
+        return UserRole.chofer;
+      case 'CLIENTE':
+      default:
+        return UserRole.cliente;
+    }
   }
 }

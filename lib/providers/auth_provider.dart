@@ -16,6 +16,7 @@ class AuthProvider extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
 
   UserRole? get role => _user?.role;
+  bool get isReady => !_isLoading;
 
   AuthProvider() {
     _checkAuthStatus();
@@ -29,6 +30,9 @@ class AuthProvider extends ChangeNotifier {
     if (isLoggedIn) {
       _user = await _authService.getCurrentUser();
       _isAuthenticated = _user != null;
+    } else {
+      _isAuthenticated = false;
+      _user = null;
     }
 
     _isLoading = false;
@@ -52,12 +56,15 @@ class AuthProvider extends ChangeNotifier {
       } else {
         _errorMessage = result['error'] as String?;
         _isAuthenticated = false;
+        _user = null;
         _isLoading = false;
         notifyListeners();
         return false;
       }
     } catch (e) {
       _errorMessage = 'Error inesperado. Intenta de nuevo.';
+      _isAuthenticated = false;
+      _user = null;
       _isLoading = false;
       notifyListeners();
       return false;
