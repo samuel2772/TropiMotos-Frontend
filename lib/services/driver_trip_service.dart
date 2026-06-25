@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import '../config/constants.dart';
 import '../models/driver_trip.dart';
 import 'api_client.dart';
@@ -12,54 +14,110 @@ class DriverTripService {
   final ApiClient _apiClient = ApiClient();
 
   Future<List<DriverTrip>> getRequestedTrips() async {
-    try {
-      final response = await _apiClient.get(AppConstants.driverRequestedTripsEndpoint);
+    final response = await _apiClient.get(AppConstants.driverRequestedTripsEndpoint);
 
-      if (response.statusCode == 200) {
-        final body = jsonDecode(response.body);
-        final data = _extractList(body);
-        if (data != null) {
-          return data.map((item) => DriverTrip.fromJson(item)).where((trip) => trip.estado == 'SOLICITADO').toList();
+    debugPrint('=== VIAJES RECIBIDOS ===');
+    debugPrint(response.body);
+
+    if (response.statusCode == 200) {
+      final body = jsonDecode(response.body);
+      final data = _extractList(body);
+      if (data != null) {
+        final trips = data
+            .map((item) => DriverTrip.fromJson(item))
+            .where((trip) => trip.estado.toUpperCase() == 'SOLICITADO')
+            .toList();
+
+        for (final trip in trips) {
+          debugPrint('=== DRIVER TRIP ===');
+          debugPrint('id: ${trip.id}');
+          debugPrint('estado: ${trip.estado}');
+          debugPrint('origen: ${trip.origen}');
+          debugPrint('destino: ${trip.destino}');
+          debugPrint('distancia: ${trip.distanciaKm}');
+          debugPrint('tarifa: ${trip.tarifa}');
         }
-      }
-    } catch (_) {}
 
-    return const [
-      DriverTrip(
-        id: '1',
-        origen: 'Av. Banzer y 4to anillo',
-        destino: 'Equipetrol',
-        distanciaKm: 3.6,
-        tarifa: 14.0,
-        estado: 'SOLICITADO',
-      ),
-      DriverTrip(
-        id: '2',
-        origen: 'Terminal Bimodal',
-        destino: '2do anillo y Santos Dumont',
-        distanciaKm: 5.1,
-        tarifa: 18.5,
-        estado: 'SOLICITADO',
-      ),
-    ];
+        return trips;
+      }
+      return const [];
+    }
+
+    throw Exception('No se pudieron cargar los viajes solicitados (${response.statusCode}).');
   }
 
-  Future<bool> acceptTrip({required String tripId, required String driverId}) async {
+  Future<bool> startTrip(String tripId) async {
     try {
+      final url = '${AppConstants.driverStartTripEndpoint}/$tripId/iniciar';
+      final body = <String, dynamic>{};
+
+      debugPrint('=== INICIAR VIAJE ===');
+      debugPrint('method: PUT');
+      debugPrint('url: ${AppConstants.baseUrl}$url');
+      debugPrint('body: ${jsonEncode(body)}');
+
+      final response = await _apiClient.put(url, body);
+
+      debugPrint('statusCode: ${response.statusCode}');
+      debugPrint('response: ${response.body}');
+
+      if (response.statusCode >= 400) {
+        debugPrint('errorBody: ${response.body}');
+      }
+
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (e) {
+      debugPrint('=== INICIAR VIAJE ===');
+      debugPrint('method: PUT');
+      debugPrint('url: ${AppConstants.baseUrl}${AppConstants.driverStartTripEndpoint}/$tripId/iniciar');
+      debugPrint('body: {}');
+      debugPrint('statusCode: request_error');
+      debugPrint('response: $e');
+      debugPrint('[DriverTripService] startTrip error: $e');
+      return false;
+    }
+  }
+
+  Future<bool> acceptTrip({
+    required String tripId,
+    required String driverId,
+    required String vehicleId,
+  }) async {
+    try {
+      final parsedDriverId = int.tryParse(driverId);
+      final parsedVehicleId = int.tryParse(vehicleId);
+      final url = '${AppConstants.driverAcceptTripEndpoint}/$tripId/aceptar';
+      final body = {
+        'idChofer': parsedDriverId ?? driverId,
+        'idVehiculo': parsedVehicleId ?? vehicleId,
+      };
+
+      debugPrint('=== ACEPTAR VIAJE ===');
+      debugPrint('tripId: $tripId');
+      debugPrint('idChofer: ${parsedDriverId ?? driverId}');
+      debugPrint('idVehiculo: ${parsedVehicleId ?? vehicleId}');
+      debugPrint('url: ${AppConstants.baseUrl}$url');
+      debugPrint('body: ${jsonEncode(body)}');
+
       final response = await _apiClient.put(
-        '${AppConstants.driverAcceptTripEndpoint}/$tripId/accept',
-        {
-          'estado': 'ACEPTADO',
-          'id_chofer': driverId,
-        },
+        url,
+        body,
       );
 
-      if (response.statusCode == 200 || response.statusCode == 204) {
-        return true;
-      }
-    } catch (_) {}
+      debugPrint('statusCode: ${response.statusCode}');
 
-    return true;
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (e) {
+      debugPrint('=== ACEPTAR VIAJE ===');
+      debugPrint('tripId: $tripId');
+      debugPrint('idChofer: $driverId');
+      debugPrint('idVehiculo: $vehicleId');
+      debugPrint('url: ${AppConstants.baseUrl}${AppConstants.driverAcceptTripEndpoint}/$tripId/aceptar');
+      debugPrint('body: ${jsonEncode({'idChofer': driverId, 'idVehiculo': vehicleId})}');
+      debugPrint('statusCode: request_error');
+      debugPrint('[DriverTripService] acceptTrip error: $e');
+      return false;
+    }
   }
 
   List<Map<String, dynamic>>? _extractList(dynamic body) {

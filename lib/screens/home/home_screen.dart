@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/ride_estimate.dart';
+import '../../models/driver_trip.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/location_service.dart';
 import '../../services/trip_service.dart';
@@ -30,6 +31,9 @@ class _HomeScreenState extends State<HomeScreen> {
   LatLng? _selectedDestination;
   LatLng _cameraTarget = const LatLng(-17.7833, -63.1821);
   RideEstimate? _estimate;
+  DriverTrip? _activeTrip;
+  String? _activeTripId;
+  Timer? _tripPollingTimer;
   String _destinationLabel = 'Selecciona un destino en el mapa';
   bool _isLoadingLocation = true;
   bool _isRequestingDriver = false;
@@ -38,6 +42,13 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     unawaited(_loadCurrentLocation());
+    unawaited(_restoreActiveTrip());
+  }
+
+  @override
+  void dispose() {
+    _tripPollingTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadCurrentLocation() async {
@@ -185,6 +196,7 @@ class _HomeScreenState extends State<HomeScreen> {
       originLng: _currentPosition!.longitude,
       destinationLat: _selectedDestination!.latitude,
       destinationLng: _selectedDestination!.longitude,
+      originLabel: 'Mi ubicacion actual',
       destinationLabel: _destinationLabel,
       estimate: _estimate!,
     );
@@ -192,12 +204,70 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     setState(() => _isRequestingDriver = false);
 
+    final tripId = result['tripId']?.toString();
+    if (result['success'] == true && tripId != null && tripId.isNotEmpty) {
+      setState(() {
+        _activeTripId = tripId;
+      });
+      _startTripPolling();
+      await _refreshActiveTrip();
+    }
+
     _showMessage(
       result['success'] == true
           ? (result['message'] as String? ?? 'Solicitud enviada')
           : (result['error'] as String? ?? 'No se pudo solicitar el chofer'),
       isError: result['success'] != true,
     );
+  }
+
+  Future<void> _restoreActiveTrip() async {
+    final tripId = await _tripService.getStoredActiveTripId();
+    if (!mounted || tripId == null || tripId.isEmpty) return;
+    setState(() {
+      _activeTripId = tripId;
+    });
+    _startTripPolling();
+    await _refreshActiveTrip();
+  }
+
+  void _startTripPolling() {
+    _tripPollingTimer?.cancel();
+    _tripPollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      _refreshActiveTrip();
+    });
+  }
+
+  Future<void> _refreshActiveTrip() async {
+    final tripId = _activeTripId;
+    if (tripId == null || tripId.isEmpty) return;
+
+    final trip = await _tripService.getTripById(tripId);
+    if (!mounted || trip == null) return;
+
+    setState(() {
+      _activeTrip = trip;
+    });
+
+    final normalizedStatus = trip.estado.toUpperCase();
+    if (normalizedStatus == 'FINALIZADO' || normalizedStatus == 'CANCELADO') {
+      await _clearActiveTripState();
+    }
+  }
+
+  Future<void> _clearActiveTripState() async {
+    _tripPollingTimer?.cancel();
+    await _tripService.clearActiveTrip();
+    if (!mounted) return;
+    setState(() {
+      _activeTripId = null;
+      _activeTrip = null;
+    });
+  }
+
+  bool get _hasAssignedDriver {
+    final status = _activeTrip?.estado.toUpperCase();
+    return status == 'ACEPTADO' || status == 'INICIADO' || status == 'EN_CURSO';
   }
 
   String _fallbackLabel(LatLng destination) {
@@ -345,14 +415,24 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           Positioned(
             right: 16,
-            bottom: 260,
+            bottom: _activeTrip != null ? 420 : 260,
             child: FloatingActionButton.small(
               heroTag: 'center_location_btn',
               backgroundColor: colorScheme.surface,
               onPressed: _loadCurrentLocation,
               child: Icon(Icons.my_location, color: colorScheme.primary),
+              ),
             ),
-          ),
+          if (_activeTrip != null)
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 260,
+              child: _AssignedTripCard(
+                trip: _activeTrip!,
+                onNewTrip: _clearActiveTripState,
+              ),
+            ),
           if (_isLoadingLocation)
             const Positioned.fill(
               child: ColoredBox(
@@ -364,13 +444,22 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       bottomSheet: RequestDriverSheet(
         destinationText: _destinationLabel,
-        helperText: _selectedDestination == null
-            ? 'Toca un punto del mapa para seleccionar destino.'
-            : 'Ya calculamos una tarifa aproximada para tu viaje.',
+        helperText: _hasAssignedDriver
+            ? 'Chofer asignado. Revisa los datos de tu viaje.'
+            : _activeTripId != null
+                ? 'Buscando chofer disponible para tu solicitud...'
+                : _selectedDestination == null
+                    ? 'Toca un punto del mapa para seleccionar destino.'
+                    : 'Ya calculamos una tarifa aproximada para tu viaje.',
         estimate: _estimate,
         isRequesting: _isRequestingDriver,
+        actionText: _hasAssignedDriver
+            ? 'Chofer asignado'
+            : _activeTripId != null
+                ? 'Buscando chofer...'
+                : 'Solicitar chofer',
         onSelectDestination: _openDestinationSheet,
-        onRequestDriver: _requestDriver,
+        onRequestDriver: _activeTripId == null ? _requestDriver : () {},
       ),
     );
   }
@@ -432,6 +521,66 @@ class _MapPin extends StatelessWidget {
           ],
         ),
         child: Icon(icon, color: color, size: 22),
+      ),
+    );
+  }
+}
+
+class _AssignedTripCard extends StatelessWidget {
+  final DriverTrip trip;
+  final Future<void> Function() onNewTrip;
+
+  const _AssignedTripCard({required this.trip, required this.onNewTrip});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: colorScheme.surface.withValues(alpha: 0.96),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.12),
+              blurRadius: 18,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Chofer asignado',
+              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 10),
+            Text('Chofer: ${trip.choferNombre?.isNotEmpty == true ? trip.choferNombre : 'Asignado'}'),
+            const SizedBox(height: 4),
+            Text('Vehiculo: ${trip.vehiculoNombre?.isNotEmpty == true ? trip.vehiculoNombre : 'Mototaxi'}'),
+            const SizedBox(height: 4),
+            Text('Placa: ${trip.vehiculoPlaca?.isNotEmpty == true ? trip.vehiculoPlaca : 'No disponible'}'),
+            const SizedBox(height: 4),
+            Text('Tarifa: ${trip.tarifaLabel}'),
+            const SizedBox(height: 4),
+            Text('Estado: ${trip.estado}'),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: onNewTrip,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Nuevo viaje'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

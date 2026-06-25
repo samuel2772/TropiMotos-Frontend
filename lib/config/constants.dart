@@ -21,13 +21,20 @@ class AppConstants {
   }
 
   static const String apiAuth = '/api/auth';
+  static const String apiViajes = '/api/viajes';
   static const String loginEndpoint = '$apiAuth/login';
   static const String registerEndpoint = '$apiAuth/register';
-  static const String tripEndpoint = '/api/trips/request';
-  static const String driverRequestedTripsEndpoint = '/api/trips?estado=SOLICITADO';
-  static const String driverAcceptTripEndpoint = '/api/trips';
+  static const String tripEndpoint = '$apiViajes/solicitar';
+  static const String tripByIdEndpoint = apiViajes;
+  static const String driverRequestedTripsEndpoint = apiViajes;
+  static const String driverAcceptTripEndpoint = apiViajes;
+  static const String driverStartTripEndpoint = apiViajes;
 
   static const String jwtTokenKey = 'jwt_token';
+  static const String userIdKey = 'user_id';
+  static const String userDriverIdKey = 'user_driver_id';
+  static const String userVehicleIdKey = 'user_vehicle_id';
+  static const String activeTripIdKey = 'active_trip_id';
   static const String userRoleKey = 'user_role';
   static const String userEmailKey = 'user_email';
   static const String userNameKey = 'user_name';

@@ -48,6 +48,19 @@ class AuthService {
 
         final user = User.fromJson(data);
         await _storage.saveToken(token);
+        if (user.id.isNotEmpty) {
+          await _storage.saveUserId(user.id);
+        }
+        final driverId = data['idChofer']?.toString() ??
+            (data['chofer'] is Map<String, dynamic> ? data['chofer']['id']?.toString() : null);
+        if (driverId != null && driverId.isNotEmpty) {
+          await _storage.saveUserDriverId(driverId);
+        }
+        final vehicleId = data['idVehiculo']?.toString() ??
+            (data['vehiculo'] is Map<String, dynamic> ? data['vehiculo']['id']?.toString() : null);
+        if (vehicleId != null && vehicleId.isNotEmpty) {
+          await _storage.saveUserVehicleId(vehicleId);
+        }
         await _storage.saveUserEmail(user.email);
         await _storage.saveUserRole((data['rol'] ?? user.role.name).toString().toUpperCase());
         if (user.nombre != null && user.nombre!.isNotEmpty) {
@@ -91,6 +104,7 @@ class AuthService {
 
   Future<User?> getCurrentUser() async {
     final token = await _storage.getToken();
+    final userId = await _storage.getUserId();
     final email = await _storage.getUserEmail();
     final roleStr = await _storage.getUserRole();
     final nombre = await _storage.getUserName();
@@ -100,7 +114,7 @@ class AuthService {
     }
 
     return User(
-      id: '',
+      id: userId ?? '',
       email: email,
       nombre: nombre,
       role: _mapRole(roleStr),

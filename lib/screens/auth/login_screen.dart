@@ -40,7 +40,10 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
 
     if (success) {
-      context.go('/home');
+      final isDriver = authProvider.role == null
+          ? false
+          : authProvider.role!.name == 'chofer';
+      context.go(isDriver ? '/driver-home' : '/home');
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

@@ -9,6 +9,7 @@ class RequestDriverSheet extends StatelessWidget {
   final String helperText;
   final RideEstimate? estimate;
   final bool isRequesting;
+  final String actionText;
   final VoidCallback onSelectDestination;
   final VoidCallback onRequestDriver;
 
@@ -18,6 +19,7 @@ class RequestDriverSheet extends StatelessWidget {
     required this.helperText,
     required this.estimate,
     required this.isRequesting,
+    this.actionText = 'Solicitar chofer',
     required this.onSelectDestination,
     required this.onRequestDriver,
   });
@@ -128,7 +130,7 @@ class RequestDriverSheet extends StatelessWidget {
               ),
               const SizedBox(height: 18),
               CustomButton(
-                text: 'Solicitar chofer',
+                text: actionText,
                 onPressed: hasEstimate ? onRequestDriver : onSelectDestination,
                 isLoading: isRequesting,
                 icon: Icons.two_wheeler,
